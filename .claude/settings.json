@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /c/Users/olive/OneDrive/Documents/GitHub/parkrun_survey_analysis log --oneline -10)",
+      "Bash(python3 -c \":*)",
+      "Bash(where python:*)",
+      "Bash(where py:*)",
+      "Bash(py -c \":*)",
+      "Bash(py -m pip install -r requirements.txt -q)"
+    ]
+  }
+}

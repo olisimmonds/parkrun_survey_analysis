@@ -1,0 +1,21 @@
+# Parkrun Survey Analysis - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Web interface
+streamlit>=1.32.0
+
+# Data handling
+pandas>=2.0.0
+openpyxl>=3.1.0
+numpy>=1.26.0
+
+# Machine learning (keyword extraction + chat context retrieval)
+scikit-learn>=1.4.0
+
+# Configuration
+pyyaml>=6.0.1
+
+# LLM providers - install all three or just the one you plan to use
+openai>=1.30.0
+anthropic>=0.28.0
+groq>=0.9.0

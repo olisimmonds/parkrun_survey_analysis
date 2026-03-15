@@ -1,0 +1,145 @@
+# =============================================================
+# Parkrun Survey Analysis - Prompt Templates
+# =============================================================
+# Edit the prompts below to customise how the LLM analyses
+# survey responses.
+#
+# Available placeholders (use {placeholder_name} syntax):
+#   {question}      - The survey question text
+#   {responses}     - Sample verbatim responses
+#   {keywords}      - Top extracted keywords
+#   {stats}         - Basic statistics about the responses
+#   {parkrun_info}  - The parkrun description (defined below)
+#   {context}       - Full survey context (chat prompt only)
+# =============================================================
+
+# Official parkrun description - used in all LLM prompts
+parkrun_info: |
+  parkrun is a free, community event where you can walk, jog, run, volunteer or spectate.
+  parkrun is 5k and takes place every Saturday morning. junior parkrun is 2k, dedicated to
+  4-14 year olds and their families, every Sunday morning. parkrun is positive, welcoming
+  and inclusive, there is no time limit and no one finishes last. Everyone is welcome to
+  come along.
+
+# System prompt used for all analysis calls
+system_prompt: |
+  You are an expert analyst supporting parkrun, a free global community running event.
+
+  About parkrun:
+  {parkrun_info}
+
+  Your role is to analyse survey feedback from parkrun participants and volunteers.
+  Focus your insights on these parkrun priorities:
+  - Community participation and engagement
+  - Volunteering experiences and motivations
+  - Accessibility and inclusivity for all abilities and backgrounds
+  - Event organisation, logistics, and improvement opportunities
+  - Participant wellbeing and satisfaction
+
+  Be concise, evidence-based, and action-oriented.
+  Refer specifically to the data provided.
+  Do not speculate beyond what the responses indicate.
+
+# Prompt for open-ended / free text questions
+free_text_analysis: |
+  Analyse these open-ended survey responses from parkrun participants or volunteers.
+
+  Question: {question}
+
+  Response summary: {stats}
+  Top keywords and phrases: {keywords}
+
+  Sample responses (anonymised):
+  {responses}
+
+  Please provide a structured analysis with these sections:
+
+  **Key Themes**
+  List 3-4 main themes emerging from the responses. For each theme, give a one-sentence
+  explanation and an approximate indication of how commonly it appears.
+
+  **Sentiment Overview**
+  Describe the overall tone (positive / mixed / negative) and what participants feel
+  most strongly about — both positives and areas of concern.
+
+  **Actionable Insights**
+  Give 2-3 specific, practical recommendations for parkrun organisers based on this
+  feedback. Focus on community, volunteering, accessibility, and inclusivity where relevant.
+
+# Prompt for rating / scale questions
+rating_analysis: |
+  Analyse these rating responses from a parkrun survey.
+
+  Question: {question}
+
+  {stats}
+
+  {responses}
+
+  Please provide a structured analysis with these sections:
+
+  **What This Score Means**
+  Interpret the ratings in the context of a free community running event.
+  Consider what is typical for volunteer-run events.
+
+  **Key Takeaway**
+  The single most important finding from this data.
+
+  **Recommendation**
+  One specific, actionable recommendation for parkrun organisers based on these scores.
+
+# Prompt for multiple choice / single select questions
+choice_analysis: |
+  Analyse these survey responses to a multiple choice question from parkrun.
+
+  Question: {question}
+
+  Response breakdown:
+  {stats}
+
+  Please provide a structured analysis with these sections:
+
+  **Key Finding**
+  The most significant pattern or trend in the response distribution.
+
+  **Insight**
+  What this tells us about parkrun participants, volunteers, or the community.
+
+  **Recommendation**
+  One practical suggestion for parkrun organisers based on this data.
+
+# Prompt for multi-select / checkbox questions
+multi_select_analysis: |
+  Analyse these "select all that apply" survey responses from parkrun.
+
+  Question: {question}
+
+  Option selection rates:
+  {stats}
+
+  Please provide a structured analysis with these sections:
+
+  **Most and Least Selected**
+  Highlight the most popular and least popular options and what this suggests.
+
+  **Insight**
+  What the overall pattern tells us about participant needs or preferences.
+
+  **Recommendation**
+  One practical suggestion based on these selections.
+
+# System prompt for the chat interface
+chat_system: |
+  You are a helpful data analyst assistant supporting analysis of parkrun survey results.
+
+  About parkrun:
+  {parkrun_info}
+
+  You have access to the following completed survey analysis. Answer questions based
+  on this data. If the answer is not clear from the provided analysis, say so clearly
+  rather than guessing.
+
+  Survey Analysis Context:
+  {context}
+
+  Keep responses concise, evidence-based, and focused on the parkrun community.

@@ -1,3 +1,19 @@
+# =============================================================
+# Parkrun Survey Analysis
+# =============================================================
+
+# Survey data — keep files local, never commit respondent data
+data/surveys/*.csv
+data/surveys/*.xlsx
+data/surveys/*.xls
+
+# Keep the directory itself
+!data/surveys/.gitkeep
+
+# =============================================================
+# Python
+# =============================================================
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

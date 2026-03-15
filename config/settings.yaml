@@ -1,0 +1,100 @@
+# =============================================================
+# Parkrun Survey Analysis - Application Settings
+# =============================================================
+# Edit this file to customise application behaviour.
+#
+# DO NOT add API keys here. Enter them in the app Settings page.
+# API keys are stored in your browser session only, never on disk.
+# =============================================================
+
+app:
+  title: "Parkrun Survey Analysis"
+  version: "0.1.0"
+  surveys_dir: "data/surveys"
+
+# -------------------------------------------------------------
+# LLM Settings
+# Provider options: "groq" (free), "openai", "anthropic"
+# -------------------------------------------------------------
+llm:
+  default_provider: "groq"
+
+  providers:
+    groq:
+      default_model: "llama-3.3-70b-versatile"
+      max_tokens: 2000
+      temperature: 0.3
+      # Groq has rate limits on the free tier.
+      # Increase this if you see rate limit errors (try 3-5 seconds).
+      rate_limit_delay_seconds: 2
+
+    openai:
+      default_model: "gpt-4o-mini"
+      max_tokens: 2000
+      temperature: 0.3
+
+    anthropic:
+      default_model: "claude-haiku-4-5-20251001"
+      max_tokens: 2000
+      temperature: 0.3
+
+# -------------------------------------------------------------
+# Analysis Settings
+# -------------------------------------------------------------
+analysis:
+  # Max number of verbatim responses included in LLM prompts
+  # (keeps costs down and protects respondent privacy)
+  max_verbatim_samples: 5
+
+  # Number of keywords to extract per question
+  keywords_count: 15
+
+  # TF-IDF settings for keyword extraction
+  tfidf_max_features: 500
+  tfidf_min_df: 2
+
+  # Chat context retrieval
+  chat_context_top_k: 3
+  chat_context_max_chars: 3000
+
+# -------------------------------------------------------------
+# Survey Parser Settings
+# -------------------------------------------------------------
+parser:
+  # SurveyMonkey metadata columns to strip before analysis.
+  # Add or remove columns as needed for your export format.
+  metadata_columns:
+    - "Respondent ID"
+    - "Collector ID"
+    - "Start Date"
+    - "End Date"
+    - "IP Address"
+    - "Email Address"
+    - "First Name"
+    - "Last Name"
+    - "Custom Data 1"
+    - "Custom Data 2"
+    - "Custom Data 3"
+
+  # Words to exclude from keyword extraction.
+  # Add domain-specific noise words here.
+  custom_stopwords:
+    - "yes"
+    - "no"
+    - "na"
+    - "n/a"
+    - "would"
+    - "could"
+    - "really"
+    - "think"
+    - "also"
+    - "like"
+    - "just"
+    - "know"
+    - "get"
+    - "got"
+    - "great"
+    - "good"
+    - "well"
+    - "make"
+    - "bit"
