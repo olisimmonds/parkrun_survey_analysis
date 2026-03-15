@@ -265,16 +265,99 @@ class AnalysisEngine:
         """
         Fit the TF-IDF context retriever on completed question analyses.
 
-        Call this after all LLM analyses are complete. The retriever is
-        then used to find the most relevant analysis for each chat query.
+        Works whether or not LLM analysis has been run — stats and keywords
+        alone are enough to give the chat useful context.
 
         Parameters
         ----------
         analyses : List of dicts, each with keys:
-                   "stem" (str), "llm_text" (str), "keywords" (list)
+                   "stem", "question", "stats", "keywords", "llm_text" (optional)
         """
-        self._context_retriever = ContextRetriever(analyses)
+        # Enrich each analysis with a formatted context string before indexing
+        enriched = []
+        for a in analyses:
+            a = dict(a)
+            a["context_text"] = self._format_context(
+                question=a.get("question"),
+                stats=a.get("stats", {}),
+                keywords=a.get("keywords", []),
+                llm_text=a.get("llm_text", ""),
+            )
+            enriched.append(a)
+
+        self._context_retriever = ContextRetriever(enriched)
         self._context_retriever.fit()
+
+    def _format_context(
+        self,
+        question: Optional[Question],
+        stats: Dict,
+        keywords: List[Tuple[str, float]],
+        llm_text: str = "",
+    ) -> str:
+        """
+        Build a rich, human-readable context string for a question.
+
+        Includes stats, keywords, sample responses, and any LLM analysis.
+        This is what gets passed to the chat LLM as its knowledge base.
+        """
+        if question is None:
+            return llm_text or ""
+
+        lines = [
+            f"Question: {question.stem}",
+            f"Type: {question.question_type.label}",
+            f"Responses: {stats.get('n_answered', 0)} of {stats.get('n_total', 0)} "
+            f"({stats.get('answered_pct', 0)}% response rate)",
+        ]
+
+        if question.question_type == QuestionType.FREE_TEXT:
+            avg_words = stats.get("avg_words", 0)
+            if avg_words:
+                lines.append(f"Average response length: {avg_words} words")
+
+            if keywords:
+                kw_str = ", ".join(w for w, _ in keywords[:12])
+                lines.append(f"Top keywords/themes: {kw_str}")
+
+            samples = question.text_responses[:5]
+            if samples:
+                lines.append("Sample responses:")
+                for s in samples:
+                    lines.append(f'  - "{s[:120]}"')
+
+        elif question.question_type == QuestionType.RATING:
+            mean = stats.get("mean")
+            if mean is not None:
+                lines.append(
+                    f"Mean score: {mean:.2f}, Median: {stats.get('median')}, "
+                    f"Std dev: {stats.get('std', 0):.2f}, "
+                    f"Range: {stats.get('min')}–{stats.get('max')}"
+                )
+            dist = stats.get("distribution", {})
+            if dist:
+                dist_str = ", ".join(f"{k}: {v} responses" for k, v in dist.items())
+                lines.append(f"Score distribution: {dist_str}")
+
+            if question.companion_texts:
+                lines.append("Comments:")
+                for t in question.companion_texts[:3]:
+                    lines.append(f'  - "{t[:120]}"')
+
+        elif question.question_type in (QuestionType.SINGLE_CHOICE, QuestionType.MULTI_SELECT):
+            vc = stats.get("value_counts", {})
+            pcts = stats.get("value_pcts", {})
+            if vc:
+                lines.append("Response breakdown:")
+                for k, v in list(vc.items())[:15]:
+                    pct = pcts.get(k, 0)
+                    lines.append(f"  {k}: {v} ({pct}%)")
+
+        if llm_text:
+            lines.append("\nAI Analysis:")
+            lines.append(llm_text)
+
+        return "\n".join(lines)
 
     def answer_chat(
         self,
@@ -344,11 +427,13 @@ class ContextRetriever:
 
             self._documents = []
             for a in self.analyses:
-                stem = a.get("stem", "")
-                llm_text = a.get("llm_text", "")
-                kw = a.get("keywords", [])
-                kw_str = " ".join(w for w, _ in kw) if kw else ""
-                doc = f"{stem} {kw_str} {llm_text}"
+                # Use pre-formatted context_text when available; fall back to
+                # stem + keywords + llm_text for backwards compatibility
+                doc = a.get("context_text") or (
+                    f"{a.get('stem', '')} "
+                    f"{' '.join(w for w, _ in a.get('keywords', []))} "
+                    f"{a.get('llm_text', '')}"
+                )
                 self._documents.append(doc)
 
             if not self._documents:
@@ -384,7 +469,8 @@ class ContextRetriever:
             total = 0
             for i in top_indices:
                 a = self.analyses[i]
-                text = f"Question: {a.get('stem', '')}\n{a.get('llm_text', '')}"
+                # Prefer the full context_text over bare llm_text
+                text = a.get("context_text") or f"Question: {a.get('stem', '')}\n{a.get('llm_text', '')}"
                 if total + len(text) > max_chars:
                     text = text[: max_chars - total]
                     parts.append(text)
@@ -400,7 +486,7 @@ class ContextRetriever:
         parts = []
         total = 0
         for a in self.analyses:
-            text = f"Question: {a.get('stem', '')}\n{a.get('llm_text', '')}"
+            text = a.get("context_text") or f"Question: {a.get('stem', '')}\n{a.get('llm_text', '')}"
             if total + len(text) > max_chars:
                 break
             parts.append(text)

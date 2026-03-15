@@ -482,6 +482,21 @@ def _run_basic_stats(questions, survey) -> None:
 
     progress.empty()
     st.session_state.analysis_results = results
+
+    # Build chat context from stats + keywords so chat works even without LLM analysis
+    analyses = [
+        {
+            "stem": v.get("stem", ""),
+            "question": v.get("question"),
+            "stats": v.get("stats", {}),
+            "keywords": v.get("keywords", []),
+            "llm_text": v.get("llm_text", ""),
+        }
+        for v in results.values()
+    ]
+    engine.build_chat_context(analyses)
+    st.session_state.chat_engine = engine
+
     st.success(f"✅ Basic stats computed for {len(questions)} questions.")
     st.rerun()
 
@@ -532,8 +547,10 @@ def _run_llm_analysis(questions, survey) -> None:
 
         completed_analyses.append({
             "stem": q.stem,
-            "llm_text": llm_text,
+            "question": q,
+            "stats": stats,
             "keywords": keywords,
+            "llm_text": llm_text,
         })
 
         progress.progress((i + 1) / len(questions))
@@ -708,10 +725,16 @@ def _handle_chat_message(user_input: str) -> None:
             prompts=st.session_state.prompts,
             provider=st.session_state.provider,
         )
-        # Build context from existing results
+        # Build context from existing results — include stats and question objects
+        # so the chat has real data even if no LLM analysis was run
         analyses = [
-            {"stem": v.get("stem", ""), "llm_text": v.get("llm_text", ""),
-             "keywords": v.get("keywords", [])}
+            {
+                "stem": v.get("stem", ""),
+                "question": v.get("question"),
+                "stats": v.get("stats", {}),
+                "keywords": v.get("keywords", []),
+                "llm_text": v.get("llm_text", ""),
+            }
             for v in st.session_state.analysis_results.values()
         ]
         engine.build_chat_context(analyses)
