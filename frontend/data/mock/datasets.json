@@ -1,0 +1,80 @@
+[
+  {
+    "id": "ds_001",
+    "name": "Volunteer Experience Survey 2024",
+    "type": "Survey",
+    "uploadedAt": "2024-11-15T09:30:00Z",
+    "size": 245760,
+    "rowCount": 1842,
+    "columnCount": 28,
+    "description": "Annual survey of parkrun volunteers covering motivation, satisfaction, and suggestions for improvement.",
+    "tags": ["volunteers", "annual", "2024", "satisfaction"],
+    "status": "ready",
+    "fileName": "volunteer_survey_2024.csv"
+  },
+  {
+    "id": "ds_002",
+    "name": "Participant Wellbeing Survey Q3 2024",
+    "type": "Survey",
+    "uploadedAt": "2024-10-03T14:22:00Z",
+    "size": 512000,
+    "rowCount": 4231,
+    "columnCount": 35,
+    "description": "Quarterly survey on participant physical and mental wellbeing outcomes from parkrun participation.",
+    "tags": ["participants", "wellbeing", "Q3", "2024"],
+    "status": "ready",
+    "fileName": "participant_wellbeing_q3_2024.csv"
+  },
+  {
+    "id": "ds_003",
+    "name": "Event Attendance Data 2024",
+    "type": "Operational",
+    "uploadedAt": "2024-12-01T08:00:00Z",
+    "size": 1048576,
+    "rowCount": 52000,
+    "columnCount": 12,
+    "description": "Weekly attendance figures across all UK parkrun events throughout 2024.",
+    "tags": ["attendance", "operational", "UK", "2024"],
+    "status": "ready",
+    "fileName": "attendance_2024.csv"
+  },
+  {
+    "id": "ds_004",
+    "name": "New Participant Onboarding Survey",
+    "type": "Survey",
+    "uploadedAt": "2024-09-18T11:45:00Z",
+    "size": 163840,
+    "rowCount": 987,
+    "columnCount": 22,
+    "description": "Survey of first-time parkrun participants covering discovery, experience and likelihood to return.",
+    "tags": ["new participants", "onboarding", "first-timers"],
+    "status": "ready",
+    "fileName": "new_participant_survey.csv"
+  },
+  {
+    "id": "ds_005",
+    "name": "Community Impact Report 2023",
+    "type": "Document",
+    "uploadedAt": "2024-01-10T16:00:00Z",
+    "size": 2097152,
+    "rowCount": null,
+    "columnCount": null,
+    "description": "Compiled annual impact report with qualitative and quantitative data on parkrun's community effect.",
+    "tags": ["impact", "annual report", "2023", "community"],
+    "status": "ready",
+    "fileName": "impact_report_2023.pdf"
+  },
+  {
+    "id": "ds_006",
+    "name": "Run Director Feedback Survey",
+    "type": "Survey",
+    "uploadedAt": "2024-08-22T13:10:00Z",
+    "size": 98304,
+    "rowCount": 412,
+    "columnCount": 19,
+    "description": "Targeted feedback from Run Directors on operational challenges, support needs, and ideas.",
+    "tags": ["run directors", "operations", "feedback"],
+    "status": "ready",
+    "fileName": "run_director_feedback.csv"
+  }
+]
