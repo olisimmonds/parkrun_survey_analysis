@@ -168,15 +168,22 @@ async def _stage_embed_v2(db: Any, job: dict) -> None:
     log.info("Embedding %d answers for survey %s.", len(texts), survey_id)
     vectors = await embedder.embed_documents(texts)
 
-    # Bulk-upsert in batches of 100 to stay within Supabase request limits.
-    batch_size = 100
+    # Use UPDATE (not upsert) — upsert's INSERT path fails the NOT NULL constraint
+    # on response_id/question_id even with default_to_null=False. Run concurrently
+    # in batches of 50 to avoid overwhelming the connection pool.
+    async def _write_embedding(answer_id: str, vec: list) -> None:
+        await (
+            db.table("open_ended_answers")
+            .update({"embedding": vec})
+            .eq("id", answer_id)
+            .execute()
+        )
+
+    batch_size = 50
     for i in range(0, len(answers), batch_size):
         batch = answers[i : i + batch_size]
         batch_vecs = vectors[i : i + batch_size]
-        updates = [{"id": a["id"], "embedding": v} for a, v in zip(batch, batch_vecs)]
-        # default_to_null=False: only update the specified columns (id, embedding).
-        # Without this, upsert NULLs every omitted column, violating NOT NULL constraints.
-        await db.table("open_ended_answers").upsert(updates, default_to_null=False).execute()
+        await asyncio.gather(*[_write_embedding(a["id"], v) for a, v in zip(batch, batch_vecs)])
         log.debug("Wrote embedding batch %d–%d.", i, i + len(batch))
 
     log.info("Wrote embeddings for survey %s.", survey_id)
@@ -255,12 +262,19 @@ async def _stage_cluster(db: Any, job: dict) -> None:
         if cluster_rows:
             await db.table("response_clusters").upsert(cluster_rows).execute()
 
-        # Batch-update theme_cluster on answers in groups of 100.
-        batch_size = 100
-        for i in range(0, len(theme_updates), batch_size):
-            await db.table("open_ended_answers").upsert(
-                theme_updates[i : i + batch_size], default_to_null=False
-            ).execute()
+        # Concurrent UPDATE (not upsert) for the same reason as the embed stage.
+        async def _write_theme(answer_id: str, cluster_id: int) -> None:
+            await (
+                db.table("open_ended_answers")
+                .update({"theme_cluster": cluster_id})
+                .eq("id", answer_id)
+                .execute()
+            )
+
+        theme_batch = 50
+        for i in range(0, len(theme_updates), theme_batch):
+            batch = theme_updates[i : i + theme_batch]
+            await asyncio.gather(*[_write_theme(u["id"], u["theme_cluster"]) for u in batch])
 
         log.info("Clustered question '%s': %d clusters.", q_label, len(labeled))
 
