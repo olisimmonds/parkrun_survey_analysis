@@ -182,6 +182,7 @@ Items already discussed and scoped for future work:
 - **Phase 2 data sources** — Event attendance, finish times, volunteer rosters. The
   database schema already has the tables; the ingestion pipeline handles CSV out of the
   box.
+- **Document ingestion** - Enable pdf uploads etc.
 - **Together AI embeddings** — Switch `EMBEDDING_PROVIDER=together` to offload the
   300 MB local model to a hosted API, reducing Railway memory requirements.
 
