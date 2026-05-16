@@ -1,0 +1,17 @@
+# Railway deployment config for the FastAPI backend.
+# In the Railway dashboard, create two services both pointed at this repo's
+# backend/ directory. Set the start command for each:
+#
+#   api service:    uvicorn app.main:app --host 0.0.0.0 --port $PORT
+#   worker service: python -m app.worker.pipeline
+#
+# Set all environment variables from .env in Railway's Variables panel.
+
+[build]
+builder = "nixpacks"
+buildCommand = "pip install -r requirements.txt"
+
+[deploy]
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 5

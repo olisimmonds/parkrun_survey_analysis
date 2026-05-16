@@ -1,10 +1,14 @@
 from functools import lru_cache
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve to the repo root regardless of the working directory when the backend starts.
+_ROOT_ENV = str(Path(__file__).parent.parent.parent / ".env")
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ROOT_ENV,
         env_file_encoding="utf-8",
         extra="ignore",
     )

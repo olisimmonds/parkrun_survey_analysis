@@ -239,12 +239,16 @@ async def run_ingest(
         )
 
         msg = response.choices[0].message
-        messages.append({"role": "assistant", "content": msg.content, "tool_calls": msg.tool_calls})
+        # content may be None when the model responds with only tool calls.
+        messages.append({
+            "role": "assistant",
+            "content": msg.content or "",
+            "tool_calls": msg.tool_calls,
+        })
 
         if not msg.tool_calls:
             break
 
-        tool_results = []
         done = False
         for tool_call in msg.tool_calls:
             fn = tool_call.function.name
@@ -253,14 +257,19 @@ async def run_ingest(
             if fn == "write_wiki_page":
                 result = await _execute_write_wiki_page(db, survey_id, args)
                 pages_written.append(args["slug"])
-                tool_results.append({"tool_call_id": tool_call.id, "content": result})
-
             elif fn == "finish_ingest":
+                result = "Ingest complete."
                 finish_summary = args.get("summary", "")
-                tool_results.append({"tool_call_id": tool_call.id, "content": "Ingest complete."})
                 done = True
+            else:
+                result = f"Unknown tool: {fn}"
 
-        messages.append({"role": "tool", "content": json.dumps(tool_results)})
+            # Each tool response must be its own message with the matching tool_call_id.
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": result,
+            })
 
         if done:
             break

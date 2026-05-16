@@ -168,17 +168,14 @@ async def _stage_embed_v2(db: Any, job: dict) -> None:
     log.info("Embedding %d answers for survey %s.", len(texts), survey_id)
     vectors = await embedder.embed_documents(texts)
 
+    # Bulk-upsert in batches of 100 to stay within Supabase request limits.
     batch_size = 100
     for i in range(0, len(answers), batch_size):
         batch = answers[i : i + batch_size]
         batch_vecs = vectors[i : i + batch_size]
-        for a, v in zip(batch, batch_vecs):
-            await (
-                db.table("open_ended_answers")
-                .update({"embedding": v})
-                .eq("id", a["id"])
-                .execute()
-            )
+        updates = [{"id": a["id"], "embedding": v} for a, v in zip(batch, batch_vecs)]
+        await db.table("open_ended_answers").upsert(updates).execute()
+        log.debug("Wrote embedding batch %d–%d.", i, i + len(batch))
 
     log.info("Wrote embeddings for survey %s.", survey_id)
 
@@ -215,7 +212,14 @@ async def _stage_cluster(db: Any, job: dict) -> None:
             log.info("Too few answers (%d) for question %s — skipping.", len(answers), q_id)
             continue
 
-        embeddings = [a["embedding"] for a in answers]
+        # Supabase/PostgREST returns pgvector values as JSON strings; parse them.
+        def _parse_vec(v):
+            if isinstance(v, str):
+                import json
+                return json.loads(v)
+            return v
+
+        embeddings = [_parse_vec(a["embedding"]) for a in answers]
         answer_ids = [a["id"] for a in answers]
         texts = [a["answer_text"] for a in answers]
 
@@ -225,12 +229,15 @@ async def _stage_cluster(db: Any, job: dict) -> None:
 
         labeled = await clusterer.label_clusters(raw_clusters, q_label)
 
+        # Bulk-upsert all cluster rows for this question.
+        cluster_rows = []
+        theme_updates: list[dict] = []
         for cl in labeled:
             rep_quotes = [
                 {"text": t, "answer_id": aid}
                 for t, aid in zip(cl["representative_texts"], cl["representative_ids"])
             ]
-            await db.table("response_clusters").upsert({
+            cluster_rows.append({
                 "survey_id": str(survey_id),
                 "question_id": q_id,
                 "cluster_id": cl["cluster_id"],
@@ -239,16 +246,19 @@ async def _stage_cluster(db: Any, job: dict) -> None:
                 "response_count": len(cl["member_ids"]),
                 "centroid": cl["centroid"],
                 "representative_quotes": rep_quotes,
-            }).execute()
-
-            # Update theme_cluster on each answer.
+            })
             for answer_id in cl["member_ids"]:
-                await (
-                    db.table("open_ended_answers")
-                    .update({"theme_cluster": cl["cluster_id"]})
-                    .eq("id", answer_id)
-                    .execute()
-                )
+                theme_updates.append({"id": answer_id, "theme_cluster": cl["cluster_id"]})
+
+        if cluster_rows:
+            await db.table("response_clusters").upsert(cluster_rows).execute()
+
+        # Batch-update theme_cluster on answers in groups of 100.
+        batch_size = 100
+        for i in range(0, len(theme_updates), batch_size):
+            await db.table("open_ended_answers").upsert(
+                theme_updates[i : i + batch_size]
+            ).execute()
 
         log.info("Clustered question '%s': %d clusters.", q_label, len(labeled))
 
@@ -370,7 +380,9 @@ async def process_one(db: Any, job: dict) -> None:
     stage = job["stage"]
     job_id = job["id"]
 
-    if stage not in _STAGE_FN and stage != "parse":
+    # 'parse' and 'store' run inside the upload endpoint, not the worker.
+    # If a job arrives at either stage, just advance it — no function to call.
+    if stage not in _STAGE_FN and stage not in ("parse", "store"):
         log.warning("Unknown stage '%s' on job %s — skipping.", stage, job_id)
         return
 
@@ -420,6 +432,29 @@ async def reset_stale_jobs(db: Any, stale_minutes: int = 30) -> int:
     return n
 
 
+async def _nightly_lint_loop(db: Any) -> None:
+    """
+    Runs wiki_maintainer.run_lint once per day at midnight UTC.
+    Runs as a background asyncio task alongside the main worker loop.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    while True:
+        now = datetime.now(timezone.utc)
+        next_midnight = (now + timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        wait_seconds = (next_midnight - now).total_seconds()
+        log.info("Wiki lint scheduled in %.0f s (next midnight UTC).", wait_seconds)
+        await asyncio.sleep(wait_seconds)
+
+        try:
+            report = await wiki_maintainer.run_lint(db)
+            log.info("Nightly wiki lint complete.\n%s", report)
+        except Exception:
+            log.exception("Nightly wiki lint failed:")
+
+
 async def run_worker() -> None:
     """Main worker loop. Polls the job queue and processes pending jobs."""
     settings = get_settings()
@@ -427,6 +462,9 @@ async def run_worker() -> None:
 
     db = await _get_db()
     await reset_stale_jobs(db)
+
+    # Start nightly lint as a background task.
+    asyncio.create_task(_nightly_lint_loop(db))
 
     while True:
         try:

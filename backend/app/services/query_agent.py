@@ -19,9 +19,11 @@ SSE streaming is handled at the router layer, not here.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import textwrap
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from groq import AsyncGroq
@@ -180,6 +182,42 @@ def _format_context(
     return "\n\n".join(parts) if parts else "_No relevant context found in the knowledge base._"
 
 
+def _cache_key(question: str, mode: str, dataset_ids: list[str] | None) -> str:
+    payload = f"{question}:{mode}:{sorted(dataset_ids or [])}"
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+async def _get_cached(db: Any, key: str) -> dict | None:
+    try:
+        cutoff = datetime.now(timezone.utc).isoformat()
+        result = (
+            await db.table("insight_cache")
+            .select("result")
+            .eq("cache_key", key)
+            .gt("expires_at", cutoff)
+            .limit(1)
+            .execute()
+        )
+        rows = result.data or []
+        if rows:
+            return rows[0]["result"]
+    except Exception as exc:
+        log.warning("Cache lookup failed: %s", exc)
+    return None
+
+
+async def _set_cached(db: Any, key: str, result: dict, ttl_hours: int = 24) -> None:
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=ttl_hours)).isoformat()
+    try:
+        await db.table("insight_cache").upsert({
+            "cache_key": key,
+            "result": result,
+            "expires_at": expires_at,
+        }).execute()
+    except Exception as exc:
+        log.warning("Cache write failed: %s", exc)
+
+
 async def answer_question(
     db: Any,
     question: str,
@@ -197,6 +235,14 @@ async def answer_question(
       }
     """
     settings = get_settings()
+
+    # Cache standard-mode queries for 24 hours to avoid redundant LLM calls.
+    if mode == "standard":
+        key = _cache_key(question, mode, dataset_ids)
+        cached = await _get_cached(db, key)
+        if cached:
+            log.info("Cache hit for question (%.50s…)", question)
+            return cached
 
     question_type = await _route_question(question)
     log.info("Question classified as: %s", question_type)
@@ -248,13 +294,18 @@ async def answer_question(
             "name": p.get("title", p.get("slug", "")),
             "excerpt": textwrap.shorten(p.get("content", ""), width=200, placeholder="…"),
             "datasetId": (p.get("survey_ids") or [""])[0],
-            "relevanceScore": p.get("similarity", 0.0),
+            "relevanceScore": float(p.get("similarity") or 0.0),
         }
         for p in wiki_pages[:3]
     ]
 
-    return {
+    result = {
         "answer": answer,
         "question_type": question_type,
         "sources": sources,
     }
+
+    if mode == "standard":
+        await _set_cached(db, key, result)
+
+    return result

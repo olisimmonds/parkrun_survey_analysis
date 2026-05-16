@@ -33,10 +33,10 @@ export const useUploadStore = create<UploadState>((set, get) => ({
       }));
 
       uploadService
-        .uploadFile(upload.file, (progress) => {
+        .uploadFile(upload.file, (progress, stage) => {
           set((state) => ({
             uploads: state.uploads.map((u) =>
-              u.id === upload.id ? { ...u, progress } : u,
+              u.id === upload.id ? { ...u, progress, stage } : u,
             ),
           }));
         })

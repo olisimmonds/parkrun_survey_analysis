@@ -9,6 +9,16 @@ interface Props {
   upload: UploadedFile;
 }
 
+const STAGE_LABEL: Record<string, string> = {
+  classify: 'Classifying questions…',
+  store: 'Storing responses…',
+  embed: 'Computing embeddings…',
+  cluster: 'Clustering themes…',
+  wiki_update: 'Building knowledge base…',
+  done: 'Complete',
+  processing: 'Processing…',
+};
+
 const statusConfig = {
   pending: { label: 'Queued', color: 'text-gray-400' },
   uploading: { label: 'Uploading…', color: 'text-parkrun-dark' },
@@ -18,8 +28,12 @@ const statusConfig = {
 
 export default function UploadedFileCard({ upload }: Props) {
   const removeUpload = useUploadStore((s) => s.removeUpload);
-  const { file, progress, status, error } = upload;
-  const { label, color } = statusConfig[status];
+  const { file, progress, status, stage, error } = upload;
+  const baseLabel = statusConfig[status].label;
+  const { color } = statusConfig[status];
+  const label = status === 'uploading' && stage
+    ? (STAGE_LABEL[stage] ?? baseLabel)
+    : baseLabel;
 
   return (
     <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">

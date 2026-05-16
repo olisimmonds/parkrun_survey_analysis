@@ -49,8 +49,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       timestamp: new Date().toISOString(),
     };
 
+    const loadingId = generateId();
     const loadingMessage: ChatMessage = {
-      id: generateId(),
+      id: loadingId,
       role: 'assistant',
       content: '',
       timestamp: new Date().toISOString(),
@@ -70,13 +71,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      const response = await chatService.sendMessage(content, config);
+      // onChunk: update the assistant bubble in real-time as tokens arrive.
+      const response = await chatService.sendMessage(content, config, (chunk) => {
+        set((state) => ({
+          session: {
+            ...state.session,
+            messages: state.session.messages.map((m) =>
+              m.id === loadingId
+                ? { ...m, content: m.content + chunk, isLoading: false }
+                : m,
+            ),
+          },
+        }));
+      });
+
+      // Final update attaches sources (and ensures content is canonical).
       set((state) => ({
         isSending: false,
         session: {
           ...state.session,
           messages: state.session.messages.map((m) =>
-            m.id === loadingMessage.id ? { ...response, isLoading: false } : m,
+            m.id === loadingId
+              ? { ...response, id: loadingId, isLoading: false }
+              : m,
           ),
         },
       }));
@@ -86,7 +103,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         session: {
           ...state.session,
           messages: state.session.messages.map((m) =>
-            m.id === loadingMessage.id
+            m.id === loadingId
               ? {
                   ...m,
                   isLoading: false,
