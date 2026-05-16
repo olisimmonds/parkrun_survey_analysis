@@ -27,15 +27,6 @@ interface JobStatusOut {
   error?: string | null;
 }
 
-const STAGE_LABEL: Record<string, string> = {
-  classify: 'Classifying questions…',
-  store: 'Storing responses…',
-  embed: 'Computing embeddings…',
-  cluster: 'Clustering themes…',
-  wiki_update: 'Building knowledge base…',
-  done: 'Complete',
-};
-
 function inferType(name: string): Dataset['type'] {
   const lower = name.toLowerCase();
   if (lower.includes('survey') || lower.includes('feedback')) return 'Survey';

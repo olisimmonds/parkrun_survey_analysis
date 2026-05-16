@@ -12,6 +12,14 @@ come along.
 
 ---
 
+## To do
+- deploy vercel 
+- Get demo running
+- Test works
+- Review and send demo date parkrun
+
+---
+
 ## What this tool does
 
 Upload a survey export (CSV or XLSX) and ask questions about your data in plain English.

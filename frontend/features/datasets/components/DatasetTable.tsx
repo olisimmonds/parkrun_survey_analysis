@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Trash2, Info, Search, ChevronUp, ChevronDown } from 'lucide-react';
-import { formatBytes, formatDate, cn } from '@/lib/utils';
+import { formatDate, cn } from '@/lib/utils';
 import { useDatasetStore, useFilteredDatasets } from '@/store/datasetStore';
 import type { Dataset } from '@/types/dataset';
 import MetadataModal from './MetadataModal';
