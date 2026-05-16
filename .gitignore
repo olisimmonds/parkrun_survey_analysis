@@ -6,6 +6,8 @@
 data/surveys/*.csv
 data/surveys/*.xlsx
 data/surveys/*.xls
+data/surveys/*.pdf
+data/surveys/*.py
 
 # Keep the directory itself
 !data/surveys/.gitkeep

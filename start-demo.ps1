@@ -7,13 +7,27 @@
 Set-StrictMode -Off
 $ErrorActionPreference = "Continue"
 
-# ── 1. Check cloudflared is installed ────────────────────────────────────────
+# ── 1. Ensure cloudflared is available (auto-download if missing) ─────────────
+$cloudflaredCmd = "cloudflared"
+$localBin = Join-Path $PSScriptRoot "cloudflared.exe"
+
 if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
-    Write-Host ""
-    Write-Host "ERROR: cloudflared is not installed." -ForegroundColor Red
-    Write-Host "Run this once, then re-run start-demo.ps1:" -ForegroundColor Yellow
-    Write-Host "  winget install cloudflare.cloudflared" -ForegroundColor Cyan
-    exit 1
+    if (Test-Path $localBin) {
+        $cloudflaredCmd = $localBin
+        Write-Host "Using local cloudflared.exe" -ForegroundColor DarkGray
+    } else {
+        Write-Host "cloudflared not found — downloading it now..." -ForegroundColor Yellow
+        $url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $localBin -UseBasicParsing
+            $cloudflaredCmd = $localBin
+            Write-Host "  Downloaded to $localBin" -ForegroundColor Green
+        } catch {
+            Write-Host "  Download failed: $_" -ForegroundColor Red
+            Write-Host "  Download manually from: $url" -ForegroundColor Yellow
+            exit 1
+        }
+    }
 }
 
 # ── 2. Kill anything already on port 8000 ────────────────────────────────────
@@ -70,7 +84,7 @@ $tunnelLog = "$env:TEMP\parkrun_tunnel.log"
 Remove-Item $tunnelLog -ErrorAction SilentlyContinue
 
 $tunnel = Start-Process -PassThru -NoNewWindow `
-    -FilePath "cloudflared" `
+    -FilePath $cloudflaredCmd `
     -ArgumentList "tunnel", "--url", "http://localhost:8000", "--no-autoupdate" `
     -RedirectStandardOutput $tunnelLog `
     -RedirectStandardError  $tunnelLog

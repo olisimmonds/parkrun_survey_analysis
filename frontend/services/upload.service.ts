@@ -110,11 +110,19 @@ export const uploadService = {
     form.append('file', file);
     form.append('survey_type', inferType(file.name).toLowerCase());
 
-    const uploadRes = await fetch(`${baseUrl}/api/ingest/upload`, {
-      method: 'POST',
-      body: form,
-      signal: abortController.signal,
-    });
+    let uploadRes: Response;
+    try {
+      uploadRes = await fetch(`${baseUrl}/api/ingest/upload`, {
+        method: 'POST',
+        body: form,
+        signal: abortController.signal,
+      });
+    } catch {
+      throw new Error(
+        `Cannot reach the backend at ${baseUrl}. ` +
+        `Make sure the API server is running: cd backend && uvicorn app.main:app --port 8000`
+      );
+    }
 
     if (!uploadRes.ok) {
       const detail = await uploadRes.json().catch(() => ({}));

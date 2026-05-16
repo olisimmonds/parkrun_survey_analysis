@@ -120,24 +120,41 @@ npm install
 
 ## Running locally
 
-Three processes need to run simultaneously:
+Three processes, three terminals:
 
 ```bash
-# Terminal 1 — FastAPI backend
-cd backend
-uvicorn app.main:app --reload --port 8000
+# Terminal 1 — API (http://localhost:8000)
+cd backend && uvicorn app.main:app --reload --port 8000
 
 # Terminal 2 — background pipeline worker
-cd backend
-python -m app.worker.pipeline
+cd backend && python -m app.worker.pipeline
 
-# Terminal 3 — Next.js frontend
-cd frontend
-npm run dev
+# Terminal 3 — frontend (http://localhost:3000)
+cd frontend && npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The backend API is at
-[http://localhost:8000/api/docs](http://localhost:8000/api/docs).
+Open **http://localhost:3000**. API docs at **http://localhost:8000/api/docs**.
+
+The worker must be running for uploads to process beyond the initial parse step. The first upload after a fresh worker start takes ~45 extra seconds while the embedding model loads.
+
+---
+
+## Running a demo (sharing with others)
+
+The frontend is deployed on Vercel. The backend runs on your machine and is exposed via a Cloudflare tunnel.
+
+**Before the demo:**
+
+```powershell
+# From the repo root — downloads cloudflared automatically if needed
+.\start-demo.ps1
+```
+
+The script starts the API, worker, and tunnel, then prints a URL like `https://abc123.trycloudflare.com`.
+
+Go to **Vercel → your project → Settings → Environment Variables**, set `NEXT_PUBLIC_API_BASE_URL` to that URL, and click **Redeploy** (~30 seconds). Your Vercel URL is then shareable.
+
+**The tunnel URL changes each session** — update the Vercel env var before each demo.
 
 ---
 

@@ -100,12 +100,31 @@ async def get_dataset(dataset_id: str, db: Any = Depends(get_db)) -> DatasetOut:
 @router.delete("/{dataset_id}", status_code=204)
 async def delete_dataset(dataset_id: str, db: Any = Depends(get_db)) -> None:
     """
-    Delete a survey and all associated data (responses, answers, clusters, wiki pages).
-    Cascading deletes are handled by the ON DELETE CASCADE foreign keys.
+    Delete a survey and all associated data, including wiki pages and log entries.
+
+    ON DELETE CASCADE handles: survey_questions, survey_responses, open_ended_answers,
+    response_clusters, ingestion_jobs. Wiki tables use a survey_ids array (no FK), so
+    we clean those up manually before deleting the survey row.
     """
     result = await db.table("surveys").select("id").eq("id", dataset_id).execute()
     if not (result.data or []):
         raise HTTPException(status_code=404, detail="Dataset not found.")
 
+    # Clean up wiki_pages that reference this survey.
+    wiki_result = await db.table("wiki_pages").select("id, survey_ids").execute()
+    for page in (wiki_result.data or []):
+        ids = [str(i) for i in (page.get("survey_ids") or [])]
+        if dataset_id not in ids:
+            continue
+        remaining = [i for i in ids if i != dataset_id]
+        if not remaining:
+            await db.table("wiki_pages").delete().eq("id", page["id"]).execute()
+        else:
+            await db.table("wiki_pages").update({"survey_ids": remaining}).eq("id", page["id"]).execute()
+
+    # Clean up wiki_log entries for this survey.
+    await db.table("wiki_log").delete().eq("survey_id", dataset_id).execute()
+
+    # Delete the survey row — cascade handles everything else.
     await db.table("surveys").delete().eq("id", dataset_id).execute()
     log.info("Deleted survey %s and all associated data.", dataset_id)

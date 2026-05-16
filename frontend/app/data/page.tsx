@@ -31,41 +31,16 @@ export default function DataPage() {
         </Link>
       </div>
 
-      {/* Summary cards */}
+      {/* Summary */}
       {!isLoading && datasets.length > 0 && (
-        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {(
-            [
-              {
-                label: 'Total datasets',
-                value: datasets.length,
-                colour: 'text-parkrun-dark',
-              },
-              {
-                label: 'Survey files',
-                value: datasets.filter((d) => d.type === 'Survey').length,
-                colour: 'text-green-600',
-              },
-              {
-                label: 'Operational',
-                value: datasets.filter((d) => d.type === 'Operational').length,
-                colour: 'text-blue-600',
-              },
-              {
-                label: 'Documents',
-                value: datasets.filter((d) => d.type === 'Document').length,
-                colour: 'text-amber-600',
-              },
-            ] as const
-          ).map(({ label, value, colour }) => (
-            <div
-              key={label}
-              className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
-            >
-              <p className={`text-2xl font-bold ${colour}`}>{value}</p>
-              <p className="mt-0.5 text-xs text-gray-400">{label}</p>
-            </div>
-          ))}
+        <div className="mb-6">
+          <p className="text-sm text-gray-500">
+            {datasets.length} dataset{datasets.length !== 1 ? 's' : ''} ·{' '}
+            {datasets.filter((d) => d.status === 'ready').length} ready
+            {datasets.filter((d) => d.status === 'processing').length > 0 && (
+              <> · {datasets.filter((d) => d.status === 'processing').length} processing</>
+            )}
+          </p>
         </div>
       )}
 
