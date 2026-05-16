@@ -1,0 +1,7 @@
+{
+  "name": "parkrun-insights",
+  "private": true,
+  "devDependencies": {
+    "next": "16.2.4"
+  }
+}

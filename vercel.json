@@ -1,7 +1,7 @@
 {
-  "buildCommand": "cd frontend && npm install && npm run build",
+  "installCommand": "cd frontend && npm install",
+  "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/out",
-  "installCommand": "echo 'deps installed in build step'",
   "cleanUrls": true,
   "trailingSlash": false,
   "headers": [
