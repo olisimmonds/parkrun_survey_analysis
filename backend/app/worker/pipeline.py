@@ -174,7 +174,9 @@ async def _stage_embed_v2(db: Any, job: dict) -> None:
         batch = answers[i : i + batch_size]
         batch_vecs = vectors[i : i + batch_size]
         updates = [{"id": a["id"], "embedding": v} for a, v in zip(batch, batch_vecs)]
-        await db.table("open_ended_answers").upsert(updates).execute()
+        # default_to_null=False: only update the specified columns (id, embedding).
+        # Without this, upsert NULLs every omitted column, violating NOT NULL constraints.
+        await db.table("open_ended_answers").upsert(updates, default_to_null=False).execute()
         log.debug("Wrote embedding batch %d–%d.", i, i + len(batch))
 
     log.info("Wrote embeddings for survey %s.", survey_id)
@@ -257,7 +259,7 @@ async def _stage_cluster(db: Any, job: dict) -> None:
         batch_size = 100
         for i in range(0, len(theme_updates), batch_size):
             await db.table("open_ended_answers").upsert(
-                theme_updates[i : i + batch_size]
+                theme_updates[i : i + batch_size], default_to_null=False
             ).execute()
 
         log.info("Clustered question '%s': %d clusters.", q_label, len(labeled))
