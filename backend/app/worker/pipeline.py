@@ -196,6 +196,11 @@ async def _stage_cluster(db: Any, job: dict) -> None:
     """
     survey_id = job["survey_id"]
 
+    # Delete any clusters from a previous failed attempt before writing fresh ones.
+    # response_clusters has UNIQUE(survey_id, question_id, cluster_id) so a retry
+    # would fail with a duplicate key error if we don't clear first.
+    await db.table("response_clusters").delete().eq("survey_id", str(survey_id)).execute()
+
     q_result = (
         await db.table("survey_questions")
         .select("id, label")
@@ -260,7 +265,7 @@ async def _stage_cluster(db: Any, job: dict) -> None:
                 theme_updates.append({"id": answer_id, "theme_cluster": cl["cluster_id"]})
 
         if cluster_rows:
-            await db.table("response_clusters").upsert(cluster_rows).execute()
+            await db.table("response_clusters").insert(cluster_rows).execute()
 
         # Concurrent UPDATE (not upsert) for the same reason as the embed stage.
         async def _write_theme(answer_id: str, cluster_id: int) -> None:
