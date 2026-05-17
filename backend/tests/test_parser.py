@@ -210,3 +210,56 @@ def test_infer_responded_at_start_date():
 def test_infer_responded_at_none_when_absent():
     row = {"AgeGroup": "25-34"}
     assert infer_responded_at(row) is None
+
+
+# ── PDF parsing ───────────────────────────────────────────────────────────────
+
+
+def test_pdf_not_in_old_extension_guard():
+    """PDF files no longer rejected by the extension check."""
+    from app.services.parser import SUPPORTED_EXTENSIONS
+    assert ".pdf" in SUPPORTED_EXTENSIONS
+
+
+def test_pdf_with_no_text_raises():
+    """An unreadable PDF (scanned / corrupted) raises a clear ValueError."""
+    # An empty PDF stream that pypdf can open but has no extractable text.
+    # We mock PdfReader.pages to return a page with no text.
+    import unittest.mock as mock
+    from app.services.parser import _parse_pdf
+
+    fake_page = mock.MagicMock()
+    fake_page.extract_text.return_value = ""
+    fake_reader = mock.MagicMock()
+    fake_reader.pages = [fake_page]
+
+    with mock.patch("pypdf.PdfReader", return_value=fake_reader):
+        with pytest.raises(ValueError, match="No text could be extracted"):
+            _parse_pdf(b"%PDF-1.4", "empty.pdf")
+
+
+def test_pdf_pages_become_rows():
+    """Each page with text becomes a separate row in the parsed survey."""
+    import unittest.mock as mock
+    from app.services.parser import _parse_pdf
+
+    pages_text = ["Page one content", "Page two content", "   ", "Page four"]
+    fake_pages = []
+    for t in pages_text:
+        p = mock.MagicMock()
+        p.extract_text.return_value = t
+        fake_pages.append(p)
+
+    fake_reader = mock.MagicMock()
+    fake_reader.pages = fake_pages
+
+    with mock.patch("pypdf.PdfReader", return_value=fake_reader):
+        result = _parse_pdf(b"%PDF-1.4", "my_document.pdf")
+
+    # Blank/whitespace pages are skipped
+    assert result.row_count == 3
+    assert result.column_count == 1
+    assert result.source == "pdf"
+    assert result.questions[0]["label"] == "Document Content"
+    assert result.rows[0]["content"] == "Page one content"
+    assert result.rows[2]["content"] == "Page four"

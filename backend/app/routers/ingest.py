@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
-ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
+ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".pdf"}
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
 

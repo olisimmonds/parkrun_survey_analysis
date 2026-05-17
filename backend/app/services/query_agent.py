@@ -20,11 +20,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
 import logging
 import textwrap
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, AsyncGenerator
 
 from groq import AsyncGroq
 
@@ -218,6 +217,57 @@ async def _set_cached(db: Any, key: str, result: dict, ttl_hours: int = 24) -> N
         log.warning("Cache write failed: %s", exc)
 
 
+async def _run_retrieval(
+    db: Any,
+    question: str,
+    mode: str,
+    dataset_ids: list[str] | None,
+) -> tuple[str, list[dict], list[dict], list[dict], str]:
+    """
+    Route the question and run all retrieval tools in parallel.
+
+    Returns (question_type, wiki_pages, sql_results, semantic_hits, context).
+    All tool errors are swallowed and return empty lists so a single
+    failed tool cannot break the whole response.
+    """
+    question_type = await _route_question(question)
+    log.info("Question classified as: %s", question_type)
+
+    tasks: dict[str, asyncio.Task] = {
+        "wiki": asyncio.create_task(_wiki_lookup(db, question)),
+        "sql":  asyncio.create_task(_sql_query(db, question, dataset_ids)),
+    }
+    if mode == "deep-research" or question_type in ("Qualitative", "Mixed"):
+        tasks["semantic"] = asyncio.create_task(_semantic_search(db, question, dataset_ids))
+        tasks["clusters"] = asyncio.create_task(_cluster_summary(db, dataset_ids))
+
+    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    result_map = dict(zip(tasks.keys(), results))
+
+    wiki_pages    = result_map.get("wiki")    or []
+    sql_results   = result_map.get("sql")     or []
+    semantic_hits = result_map.get("semantic") or []
+    if isinstance(wiki_pages,    Exception): wiki_pages    = []
+    if isinstance(sql_results,   Exception): sql_results   = []
+    if isinstance(semantic_hits, Exception): semantic_hits = []
+
+    context = _format_context(wiki_pages, sql_results, semantic_hits, question_type)
+    return question_type, wiki_pages, sql_results, semantic_hits, context
+
+
+def _build_sources(wiki_pages: list[dict]) -> list[dict]:
+    return [
+        {
+            "id": p.get("id", p.get("slug", "")),
+            "name": p.get("title", p.get("slug", "")),
+            "excerpt": textwrap.shorten(p.get("content", ""), width=200, placeholder="..."),
+            "datasetId": (p.get("survey_ids") or [""])[0],
+            "relevanceScore": float(p.get("similarity") or 0.0),
+        }
+        for p in wiki_pages[:3]
+    ]
+
+
 async def answer_question(
     db: Any,
     question: str,
@@ -225,55 +275,19 @@ async def answer_question(
     dataset_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """
-    Main entry point for the query agent.
-
-    Returns:
-      {
-        "answer": str,
-        "question_type": str,
-        "sources": [{"slug": str, "title": str, "excerpt": str}],
-      }
+    Non-streaming query agent entry point. Returns the full answer dict.
+    Use stream_answer() for real-time token delivery.
     """
     settings = get_settings()
 
-    # Cache standard-mode queries for 24 hours to avoid redundant LLM calls.
-    if mode == "standard":
-        key = _cache_key(question, mode, dataset_ids)
+    key = _cache_key(question, mode, dataset_ids) if mode == "standard" else None
+    if key:
         cached = await _get_cached(db, key)
         if cached:
-            log.info("Cache hit for question (%.50s…)", question)
+            log.info("Cache hit for question (%.50s)", question)
             return cached
 
-    question_type = await _route_question(question)
-    log.info("Question classified as: %s", question_type)
-
-    # Determine which tools to run based on mode and question type.
-    tasks: dict[str, asyncio.Task] = {}
-
-    tasks["wiki"] = asyncio.create_task(_wiki_lookup(db, question))
-    tasks["sql"] = asyncio.create_task(_sql_query(db, question, dataset_ids))
-
-    if mode == "deep-research" or question_type in ("Qualitative", "Mixed"):
-        tasks["semantic"] = asyncio.create_task(
-            _semantic_search(db, question, dataset_ids)
-        )
-        tasks["clusters"] = asyncio.create_task(_cluster_summary(db, dataset_ids))
-
-    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-    result_map = dict(zip(tasks.keys(), results))
-
-    wiki_pages = result_map.get("wiki") or []
-    sql_results = result_map.get("sql") or []
-    semantic_hits = result_map.get("semantic") or []
-
-    if isinstance(wiki_pages, Exception):
-        wiki_pages = []
-    if isinstance(sql_results, Exception):
-        sql_results = []
-    if isinstance(semantic_hits, Exception):
-        semantic_hits = []
-
-    context = _format_context(wiki_pages, sql_results, semantic_hits, question_type)
+    question_type, wiki_pages, _, _, context = await _run_retrieval(db, question, mode, dataset_ids)
 
     client = AsyncGroq(api_key=settings.groq_api_key)
     synth_resp = await client.chat.completions.create(
@@ -285,27 +299,66 @@ async def answer_question(
         temperature=0.3,
         max_tokens=1024,
     )
-
     answer = synth_resp.choices[0].message.content or "No answer generated."
+    result = {"answer": answer, "question_type": question_type, "sources": _build_sources(wiki_pages)}
 
-    sources = [
-        {
-            "id": p.get("id", p.get("slug", "")),
-            "name": p.get("title", p.get("slug", "")),
-            "excerpt": textwrap.shorten(p.get("content", ""), width=200, placeholder="…"),
-            "datasetId": (p.get("survey_ids") or [""])[0],
-            "relevanceScore": float(p.get("similarity") or 0.0),
-        }
-        for p in wiki_pages[:3]
-    ]
+    if key:
+        await _set_cached(db, key, result)
+    return result
 
-    result = {
-        "answer": answer,
-        "question_type": question_type,
-        "sources": sources,
-    }
 
-    if mode == "standard":
+async def stream_answer(
+    db: Any,
+    question: str,
+    mode: str = "standard",
+    dataset_ids: list[str] | None = None,
+) -> AsyncGenerator[dict[str, Any], None]:
+    """
+    Streaming query agent entry point.
+
+    Yields dicts in order:
+      {"type": "chunk",  "text": str}          — one token at a time
+      {"type": "done",   "sources": [...],
+                         "question_type": str}  — final event
+    """
+    settings = get_settings()
+
+    key = _cache_key(question, mode, dataset_ids) if mode == "standard" else None
+    if key:
+        cached = await _get_cached(db, key)
+        if cached:
+            log.info("Cache hit (stream_answer): %.50s", question)
+            for word in (cached.get("answer") or "").split():
+                yield {"type": "chunk", "text": word + " "}
+            yield {"type": "done", "sources": cached.get("sources", []),
+                   "question_type": cached.get("question_type", "")}
+            return
+
+    question_type, wiki_pages, _, _, context = await _run_retrieval(db, question, mode, dataset_ids)
+
+    client = AsyncGroq(api_key=settings.groq_api_key)
+    stream = await client.chat.completions.create(
+        model=settings.groq_capable_model,
+        messages=[
+            {"role": "system", "content": _SYNTH_SYSTEM},
+            {"role": "user", "content": _SYNTH_USER.format(question=question, context=context)},
+        ],
+        temperature=0.3,
+        max_tokens=1024,
+        stream=True,
+    )
+
+    chunks: list[str] = []
+    async for event in stream:
+        token = (event.choices[0].delta.content or "") if event.choices else ""
+        if token:
+            chunks.append(token)
+            yield {"type": "chunk", "text": token}
+
+    answer = "".join(chunks)
+    sources = _build_sources(wiki_pages)
+    result = {"answer": answer, "question_type": question_type, "sources": sources}
+    if key:
         await _set_cached(db, key, result)
 
-    return result
+    yield {"type": "done", "sources": sources, "question_type": question_type}

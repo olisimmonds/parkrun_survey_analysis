@@ -26,14 +26,11 @@ from fastapi.responses import StreamingResponse
 
 from app.database import get_db
 from app.models.wiki import WikiIndexEntry, WikiIndexOut
-from app.services.query_agent import answer_question
+from app.services.query_agent import stream_answer
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
-
-# In-memory session store for MVP.
-_sessions: dict[str, dict] = {}
 
 
 class _SSE:
@@ -53,60 +50,51 @@ async def _stream_chat(
     db: Any,
 ):
     """
-    Generator that yields SSE-formatted events:
-      status   — tool is running ("Searching wiki...", "Running SQL...", etc.)
-      chunk    — a word/token of the final answer (simulated streaming)
-      sources  — list of source objects
-      done     — signals end of stream
-      error    — if something goes wrong
+    SSE generator. Events emitted:
+      status  — brief progress message while retrieving context
+      chunk   — one token from the LLM (real-time Groq streaming)
+      sources — list of source objects after the answer is complete
+      done    — signals end of stream
+      error   — if something goes wrong
     """
     try:
-        yield _SSE.event("status", {"message": "Analysing question…"})
+        yield _SSE.event("status", {"message": "Searching knowledge base..."})
         await asyncio.sleep(0)
 
-        yield _SSE.event("status", {"message": "Searching wiki knowledge base…"})
-        await asyncio.sleep(0)
+        answer_parts: list[str] = []
+        sources: list = []
 
-        result = await answer_question(
+        async for event in stream_answer(
             db=db,
             question=message,
             mode=mode,
             dataset_ids=dataset_ids or None,
-        )
+        ):
+            if event["type"] == "chunk":
+                answer_parts.append(event["text"])
+                yield _SSE.event("chunk", {"text": event["text"]})
+            elif event["type"] == "done":
+                sources = event.get("sources", [])
 
-        answer: str = result["answer"]
-        sources = result.get("sources", [])
+        answer = "".join(answer_parts)
 
-        yield _SSE.event("status", {"message": "Composing response…"})
-
-        # Stream the answer word by word (real token streaming requires an async
-        # generator from the LLM; Groq streaming can be added in the next phase).
-        words = answer.split(" ")
-        for word in words:
-            yield _SSE.event("chunk", {"text": word + " "})
-            await asyncio.sleep(0.01)
-
-        # Store message in session.
-        if session_id not in _sessions:
-            _sessions[session_id] = {
+        # Load or create the session, append the two new messages, save.
+        session = await _load_session(db, session_id)
+        if session is None:
+            session = {
                 "id": session_id,
                 "title": message[:60],
                 "messages": [],
                 "mode": mode,
                 "createdAt": _now_iso(),
             }
-        _sessions[session_id]["messages"].append(
-            {"id": str(uuid.uuid4()), "role": "user", "content": message, "timestamp": _now_iso()}
-        )
-        _sessions[session_id]["messages"].append(
-            {
-                "id": str(uuid.uuid4()),
-                "role": "assistant",
-                "content": answer,
-                "timestamp": _now_iso(),
-                "sources": sources,
-            }
-        )
+        session["messages"].extend([
+            {"id": str(uuid.uuid4()), "role": "user",
+             "content": message, "timestamp": _now_iso()},
+            {"id": str(uuid.uuid4()), "role": "assistant",
+             "content": answer, "timestamp": _now_iso(), "sources": sources},
+        ])
+        await _save_session(db, session)
 
         yield _SSE.event("sources", sources)
         yield _SSE.event("done", {"sessionId": session_id})
@@ -119,6 +107,32 @@ async def _stream_chat(
 def _now_iso() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()
+
+
+async def _load_session(db: Any, session_id: str) -> dict | None:
+    try:
+        result = (
+            await db.table("chat_sessions")
+            .select("*")
+            .eq("id", session_id)
+            .single()
+            .execute()
+        )
+        return result.data or None
+    except Exception:
+        return None
+
+
+async def _save_session(db: Any, session: dict) -> None:
+    try:
+        await db.table("chat_sessions").upsert({
+            "id":       session["id"],
+            "title":    session.get("title", "")[:120],
+            "mode":     session.get("mode", "standard"),
+            "messages": session.get("messages", []),
+        }).execute()
+    except Exception as exc:
+        log.warning("Failed to save session %s: %s", session.get("id"), exc)
 
 
 @router.post("/api/chat")
@@ -156,13 +170,19 @@ async def chat(
 
 
 @router.get("/api/chat/sessions")
-async def list_sessions() -> list[dict]:
-    return sorted(_sessions.values(), key=lambda s: s["createdAt"], reverse=True)
+async def list_sessions(db: Any = Depends(get_db)) -> list[dict]:
+    result = (
+        await db.table("chat_sessions")
+        .select("id, title, mode, created_at, updated_at")
+        .order("updated_at", desc=True)
+        .execute()
+    )
+    return result.data or []
 
 
 @router.get("/api/chat/sessions/{session_id}")
-async def get_session(session_id: str) -> dict:
-    session = _sessions.get(session_id)
+async def get_session(session_id: str, db: Any = Depends(get_db)) -> dict:
+    session = await _load_session(db, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found.")
     return session

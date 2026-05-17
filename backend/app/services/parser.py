@@ -153,7 +153,55 @@ def _read_raw(content: bytes, file_name: str) -> pd.DataFrame:
     return pd.read_csv(buf, header=None, dtype=str)
 
 
-SUPPORTED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
+SUPPORTED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".pdf"}
+
+
+def _parse_pdf(content: bytes, file_name: str) -> ParsedSurvey:
+    """
+    Extract text from a PDF and map it to the survey data model.
+
+    Each page becomes one response under a single 'Document Content' question.
+    This lets the embedding, clustering, and wiki stages treat the document
+    like any other open-ended survey — semantically searchable via chat.
+
+    Raises ValueError if no text can be extracted (e.g. scanned/image PDFs).
+    """
+    try:
+        from pypdf import PdfReader  # type: ignore[import]
+    except ImportError as exc:
+        raise ValueError(
+            "PDF support requires pypdf. Run: pip install pypdf>=4.0.0"
+        ) from exc
+
+    try:
+        reader = PdfReader(io.BytesIO(content))
+    except Exception as exc:
+        raise ValueError(f"Cannot read PDF '{file_name}': {exc}") from exc
+
+    pages = [
+        page.extract_text().strip()
+        for page in reader.pages
+        if page.extract_text() and page.extract_text().strip()
+    ]
+
+    if not pages:
+        raise ValueError(
+            f"No text could be extracted from '{file_name}'. "
+            "The PDF may be scanned or image-based."
+        )
+
+    question = {"column_key": "content", "label": "Document Content", "position": 0}
+    rows = [{"content": page} for page in pages]
+
+    return ParsedSurvey(
+        name=_name_from_filename(file_name),
+        source="pdf",
+        questions=[question],
+        rows=rows,
+        row_count=len(rows),
+        column_count=1,
+        file_name=file_name,
+    )
 
 
 def parse_survey_file(content: bytes, file_name: str) -> ParsedSurvey:
@@ -168,6 +216,9 @@ def parse_survey_file(content: bytes, file_name: str) -> ParsedSurvey:
             f"Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
         )
 
+    if ext == ".pdf":
+        return _parse_pdf(content, file_name)
+
     try:
         df_raw = _read_raw(content, file_name)
     except Exception as exc:
@@ -181,8 +232,6 @@ def parse_survey_file(content: bytes, file_name: str) -> ParsedSurvey:
     if fmt == "surveymonkey":
         return _parse_surveymonkey(df_raw, file_name)
 
-    # Standard format: first row is the header.
-    ext = Path(file_name).suffix.lower()
     buf = io.BytesIO(content)
     if ext in {".xlsx", ".xls"}:
         df = pd.read_excel(buf, dtype=str)
