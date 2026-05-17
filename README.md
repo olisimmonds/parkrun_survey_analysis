@@ -12,14 +12,6 @@ come along.
 
 ---
 
-## To do
-- deploy vercel 
-- Get demo running
-- Test works
-- Review and send demo date parkrun
-
----
-
 ## What this tool does
 
 Upload a survey export (CSV or XLSX) and ask questions about your data in plain English.
@@ -170,10 +162,6 @@ Go to **Vercel → your project → Settings → Environment Variables**, set `N
 
 Items already discussed and scoped for future work:
 
-- **Real-time token streaming** — Wire Groq's `stream=True` to the chat endpoint so
-  answers appear token-by-token rather than word-by-word.
-- **Chat session persistence** — Store sessions in Supabase so conversations survive
-  API restarts.
 - **API authentication** — Add Supabase Auth + JWT verification to all API endpoints.
   The RLS migration (`009_rls_policies.sql`) is ready; the application layer is not yet
   gated.
@@ -182,9 +170,9 @@ Items already discussed and scoped for future work:
 - **Phase 2 data sources** — Event attendance, finish times, volunteer rosters. The
   database schema already has the tables; the ingestion pipeline handles CSV out of the
   box.
-- **Document ingestion** - Enable pdf uploads etc.
-- **Together AI embeddings** — Switch `EMBEDDING_PROVIDER=together` to offload the
-  300 MB local model to a hosted API, reducing Railway memory requirements.
+- **Together AI embeddings** — Switch `EMBEDDING_PROVIDER=together` and set
+  `TOGETHER_API_KEY` in `.env` to offload the 300 MB local model. The embedding service
+  already supports this — no code changes needed.
 
 ---
 
