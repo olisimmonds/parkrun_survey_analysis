@@ -1,8 +1,5 @@
 # parkrun Insights — demo startup script
 # Starts the API, worker, and a Cloudflare tunnel, then tells you what to paste into Vercel.
-#
-# Requirements (one-time installs):
-#   winget install cloudflare.cloudflared
 
 Set-StrictMode -Off
 $ErrorActionPreference = "Continue"
@@ -35,7 +32,8 @@ $existing = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction Sile
 if ($existing) {
     Write-Host "Killing existing process on port 8000 (PID $($existing.OwningProcess))..." -ForegroundColor Yellow
     Stop-Process -Id $existing.OwningProcess -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 500
+    # Wait for OS to release the port
+    Start-Sleep -Seconds 2
 }
 
 # ── 3. Locate the backend directory ──────────────────────────────────────────
@@ -47,18 +45,18 @@ Write-Host ""
 Write-Host "Starting API server..." -ForegroundColor Green
 $api = Start-Process -PassThru -NoNewWindow `
     -FilePath "python" `
-    -ArgumentList "-m", "uvicorn", "app.main:app", "--port", "8000" `
+    -ArgumentList "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000" `
     -WorkingDirectory $backend `
     -RedirectStandardOutput "$env:TEMP\parkrun_api.log" `
     -RedirectStandardError  "$env:TEMP\parkrun_api_err.log"
 Write-Host "  API PID: $($api.Id)" -ForegroundColor DarkGray
 
-# Wait for API to be ready
+# Wait for API — use 127.0.0.1 directly (Windows may resolve 'localhost' to IPv6 ::1)
 $ready = $false
-for ($i = 0; $i -lt 20; $i++) {
-    Start-Sleep -Milliseconds 500
+for ($i = 0; $i -lt 30; $i++) {
+    Start-Sleep -Seconds 1
     try {
-        $r = Invoke-WebRequest -Uri "http://localhost:8000/api/health" -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop
+        $r = Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/health" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
         if ($r.StatusCode -eq 200) { $ready = $true; break }
     } catch {}
 }
@@ -85,13 +83,13 @@ Remove-Item $tunnelLog -ErrorAction SilentlyContinue
 
 $tunnel = Start-Process -PassThru -NoNewWindow `
     -FilePath $cloudflaredCmd `
-    -ArgumentList "tunnel", "--url", "http://localhost:8000", "--no-autoupdate" `
+    -ArgumentList "tunnel", "--url", "http://127.0.0.1:8000", "--no-autoupdate" `
     -RedirectStandardOutput $tunnelLog `
     -RedirectStandardError  $tunnelLog
 
 $tunnelUrl = $null
-for ($i = 0; $i -lt 30; $i++) {
-    Start-Sleep -Milliseconds 500
+for ($i = 0; $i -lt 40; $i++) {
+    Start-Sleep -Seconds 1
     if (Test-Path $tunnelLog) {
         $content = Get-Content $tunnelLog -Raw -ErrorAction SilentlyContinue
         if ($content -match 'https://[a-z0-9\-]+\.trycloudflare\.com') {
@@ -109,27 +107,27 @@ if (-not $tunnelUrl) {
 
 # ── 7. Print what to do next ──────────────────────────────────────────────────
 Write-Host ""
-Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+Write-Host "================================================" -ForegroundColor Cyan
 Write-Host " Demo is running!" -ForegroundColor Green
-Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+Write-Host "================================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host " Tunnel URL (backend):  $tunnelUrl" -ForegroundColor Yellow
+Write-Host " Tunnel URL:  $tunnelUrl" -ForegroundColor Yellow
 Write-Host ""
-Write-Host " ACTION REQUIRED — update Vercel before sharing the demo URL:" -ForegroundColor White
-Write-Host "  1. Go to: vercel.com → your project → Settings → Environment Variables"
+Write-Host " ACTION REQUIRED before sharing your Vercel URL:" -ForegroundColor White
+Write-Host "  1. vercel.com -> your project -> Settings -> Environment Variables"
 Write-Host "  2. Set NEXT_PUBLIC_API_BASE_URL = $tunnelUrl"
-Write-Host "  3. Save, then click Redeploy (takes ~30 seconds)"
+Write-Host "  3. Save, then Redeploy (~30 seconds)"
 Write-Host ""
 Write-Host " Logs:"
-Write-Host "  API    → $env:TEMP\parkrun_api_err.log"
-Write-Host "  Worker → $env:TEMP\parkrun_worker_err.log"
-Write-Host "  Tunnel → $tunnelLog"
+Write-Host "  API    -> $env:TEMP\parkrun_api_err.log"
+Write-Host "  Worker -> $env:TEMP\parkrun_worker_err.log"
+Write-Host "  Tunnel -> $tunnelLog"
 Write-Host ""
 Write-Host " Press Ctrl+C to stop everything." -ForegroundColor DarkGray
-Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
+Write-Host "================================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Keep the script alive so Ctrl+C stops gracefully
+# Keep the script alive so Ctrl+C cleans up gracefully
 try {
     while ($true) { Start-Sleep -Seconds 30 }
 } finally {
