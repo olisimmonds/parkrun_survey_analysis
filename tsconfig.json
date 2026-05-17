@@ -14,8 +14,9 @@
     "jsx": "react-jsx",
     "incremental": true,
     "plugins": [{ "name": "next" }],
+    "baseUrl": "frontend",
     "paths": {
-      "@/*": ["./frontend/*"]
+      "@/*": ["./*"]
     }
   },
   "include": [
