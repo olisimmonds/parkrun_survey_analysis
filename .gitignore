@@ -34,6 +34,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+# Un-ignore the Next.js utility library (frontend/lib/ was caught by the Python lib/ rule above)
+!frontend/lib/
 parts/
 sdist/
 var/
