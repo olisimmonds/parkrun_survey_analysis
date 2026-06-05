@@ -3,21 +3,22 @@ services:
   - type: web
     name: parkrun-api
     runtime: python
-    pythonVersion: 3.11
     rootDir: backend
     buildCommand: pip install -r requirements.txt && python scripts/apply_migrations.py
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.0
+        value: 3.11
     autoDeploy: true
 
   # Background worker for processing surveys
   - type: worker
     name: parkrun-worker
     runtime: python
-    pythonVersion: 3.11
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: python -m app.worker.pipeline
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
     autoDeploy: true
