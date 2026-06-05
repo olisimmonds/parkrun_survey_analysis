@@ -12,8 +12,8 @@ services:
         value: 3.11.0
     autoDeploy: true
 
-  # Background worker for processing surveys (private service — no HTTP)
-  - type: private_service
+  # Background worker for processing surveys
+  - type: worker
     name: parkrun-worker
     runtime: python
     pythonVersion: 3.11
